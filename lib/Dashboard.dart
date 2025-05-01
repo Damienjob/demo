@@ -4,7 +4,10 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'dart:math' as math;
 import 'package:shimmer/shimmer.dart';
+import 'package:http/http.dart' as http;
 import 'login.dart';
+import 'api_service.dart';
+import 'payment_model.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -15,11 +18,10 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage>
     with SingleTickerProviderStateMixin {
-  final List<Map<String, dynamic>> paymentHistory = [
-    {"date": "15/03/2025", "amount": "50 000 FCFA", "status": "Payé"},
-    {"date": "10/03/2025", "amount": "25 000 FCFA", "status": "En attente"},
-    {"date": "05/03/2025", "amount": "100 000 FCFA", "status": "En attente"},
-  ];
+  List<Map<String, dynamic>> paymentHistory = [];
+  List<PaymentData> originalPayments = []; // Pour stocker les paiements originaux avec leurs ID
+  bool _isLoadingPayments = true;
+  String _errorMessage = '';
 
   int _totalPaid = 0;
   int _totalDue = 0;
@@ -37,7 +39,6 @@ class _HomePageState extends State<HomePage>
   @override
   void initState() {
     super.initState();
-    _calculatePaymentDetails();
 
     // Animation pour les éléments
     _animationController = AnimationController(
@@ -52,14 +53,8 @@ class _HomePageState extends State<HomePage>
 
     _animationController.forward();
 
-    // Simulation de chargement
-    Future.delayed(const Duration(milliseconds: 1500), () {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    });
+    // Charger les données de paiement de l'API
+    _fetchPaymentData();
   }
 
   @override
@@ -69,14 +64,97 @@ class _HomePageState extends State<HomePage>
     super.dispose();
   }
 
+  // Méthode pour récupérer les données de paiement depuis l'API
+  Future<void> _fetchPaymentData() async {
+    setState(() {
+      _isLoadingPayments = true;
+      _errorMessage = '';
+    });
+
+    try {
+      // Appeler le service API pour récupérer les paiements
+      final payments = await ApiService.getClientPayments();
+      
+      if (mounted) {
+        setState(() {
+          // Sauvegarder les paiements originaux
+          originalPayments = payments;
+          
+          // Convertir les objets PaymentData en Map pour l'affichage
+          paymentHistory = payments.map((payment) => payment.toMap()).toList();
+          paymentHistory.sort((a, b) {
+            try {
+              // Format réel: "yyyy-MM-dd"
+              final dateFormat = DateFormat("yyyy-MM-dd");
+              final dateA = dateFormat.parse(a["date"] ?? "2000-01-01");
+              final dateB = dateFormat.parse(b["date"] ?? "2000-01-01");
+              // Tri ascendant (plus ancien d'abord)
+              return dateA.compareTo(dateB);
+            } catch (e) {
+              print('Erreur lors du tri des dates: $e');
+              return 0; // En cas d'erreur, conserver l'ordre actuel
+            }
+          });
+          
+          _isLoadingPayments = false;
+
+          // Calculer les détails de paiement
+          _calculatePaymentDetails();
+
+          // Désactiver l'animation de chargement après un délai
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted) {
+              setState(() {
+                _isLoading = false;
+              });
+            }
+          });
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString();
+          _isLoadingPayments = false;
+          _isLoading = false;
+
+          // Si pas de données, initialiser avec une liste vide
+          if (paymentHistory.isEmpty) {
+            paymentHistory = [];
+          }
+
+          _calculatePaymentDetails();
+        });
+
+        // Afficher l'erreur à l'utilisateur
+        _showErrorNotification(context, 'Erreur de chargement des données: $e');
+      }
+    }
+  }
+
   void _calculatePaymentDetails() {
     _totalPaid = 0;
     _totalDue = 0;
 
     for (var payment in paymentHistory) {
-      var amount = int.parse(
-        payment["amount"].replaceAll(" FCFA", "").replaceAll(" ", ""),
-      );
+      var amountStr = payment["amount"]
+          .toString()
+          .replaceAll(" FCFA", "")
+          .replaceAll(" ", "");
+      // Gérer le cas où amount n'est pas un nombre valide
+      var amount = 0;
+      try {
+        amount = int.parse(amountStr);
+      } catch (e) {
+        print('Erreur de parsing du montant: $amountStr');
+        // Essayons avec la conversion double si int échoue
+        try {
+          amount = double.parse(amountStr).toInt();
+        } catch (e) {
+          print('Erreur de parsing du montant en double: $amountStr');
+        }
+      }
+
       if (payment["status"] == "Payé") {
         _totalPaid += amount;
       }
@@ -167,6 +245,25 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  void _showErrorNotification(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.error_outline, color: Colors.white),
+            const SizedBox(width: 10),
+            Expanded(child: Text(message, maxLines: 2)),
+          ],
+        ),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.all(10),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
   void _confirmPayment(Map<String, dynamic> payment, int index) {
     showDialog(
       context: context,
@@ -200,8 +297,12 @@ class _HomePageState extends State<HomePage>
               ),
               onPressed: () {
                 setState(() {
+                  // Mise à jour de l'affichage
                   paymentHistory[index]["status"] = "Payé";
                   _calculatePaymentDetails();
+                  
+                  // Idéalement, ici on ferait une requête API pour mettre à jour le statut
+                  // côté serveur, mais pour cette version, on se contente de mettre à jour l'UI
                 });
                 Navigator.of(context).pop();
                 _showSuccessNotification(
@@ -221,6 +322,11 @@ class _HomePageState extends State<HomePage>
         );
       },
     );
+  }
+
+  // Méthode pour rafraîchir les données
+  Future<void> _refreshData() async {
+    await _fetchPaymentData();
   }
 
   @override
@@ -300,6 +406,12 @@ class _HomePageState extends State<HomePage>
         ),
       ),
       body: _isLoading ? _buildShimmerLoading() : _buildMainContent(),
+      // Ajout du widget RefreshIndicator pour permettre le rafraîchissement par glissement
+      floatingActionButton: FloatingActionButton(
+        onPressed: _refreshData,
+        backgroundColor: const Color(0xFF6366F1),
+        child: const Icon(Icons.refresh),
+      ),
     );
   }
 
@@ -333,7 +445,7 @@ class _HomePageState extends State<HomePage>
               height: 400,
               width: double.infinity,
               decoration: BoxDecoration(
-                color: Colors.white,
+color: Colors.white,
                 borderRadius: BorderRadius.circular(15),
               ),
             ),
@@ -344,431 +456,547 @@ class _HomePageState extends State<HomePage>
   }
 
   Widget _buildMainContent() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Carte principale avec animation
-          SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0, -0.2),
-              end: Offset.zero,
-            ).animate(_animation),
-            child: FadeTransition(
-              opacity: _animation,
-              child: Container(
-                height: 200,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF6366F1), Color(0xFF4338CA)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+    return RefreshIndicator(
+      onRefresh: _refreshData,
+      color: const Color(0xFF6366F1),
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildPaymentSummary(),
+            const SizedBox(height: 25),
+            _buildPaymentProgress(),
+            const SizedBox(height: 25),
+            _buildPaymentHistory(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPaymentSummary() {
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(0, (1 - _animation.value) * 50),
+          child: Opacity(
+            opacity: _animation.value,
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF6366F1), Color(0xFF4F46E5)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF6366F1).withOpacity(0.3),
+                    blurRadius: 10,
+                    spreadRadius: 2,
+                    offset: const Offset(0, 5),
                   ),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF6366F1).withOpacity(0.4),
-                      blurRadius: 15,
-                      spreadRadius: 5,
-                    ),
-                  ],
-                ),
-                child: Stack(
-                  children: [
-                    // Éléments décoratifs
-                    Positioned(
-                      right: -50,
-                      top: -50,
-                      child: Container(
-                        height: 150,
-                        width: 150,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(75),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      left: -30,
-                      bottom: -30,
-                      child: Container(
-                        height: 100,
-                        width: 100,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(50),
-                        ),
-                      ),
-                    ),
-
-                    // Contenu de la carte
-                    Padding(
-                      padding: const EdgeInsets.all(20.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            "Résumé des paiements",
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-
-                          // Cartes de résumé
-                          SizedBox(
-                            height: 110,
-                            child: PageView(
-                              controller: _pageController,
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 12.0),
-                                  child: _buildGlassCard(
-                                    "Montant payé",
-                                    _totalPaid,
-                                    Icons.paid,
-                                  ),
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6.0,
-                                  ),
-                                  child: _buildGlassCard(
-                                    "Montant total",
-                                    _totalDue,
-                                    Icons.account_balance_wallet,
-                                  ),
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.only(left: 12.0),
-                                  child: _buildGlassCard(
-                                    "Reste à payer",
-                                    _remainingAmount,
-                                    Icons.payment,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // Indicateurs de page
-                    Positioned(
-                      bottom: 5,
-                      left: 0,
-                      right: 0,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: List.generate(
-                          3,
-                          (index) => Container(
-                            margin: const EdgeInsets.symmetric(horizontal: 4),
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.white.withOpacity(
-                                _pageController.hasClients &&
-                                        (_pageController.page?.round() ?? 0) ==
-                                            index
-                                    ? 1
-                                    : 0.5,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                ],
               ),
-            ),
-          ),
-
-          const SizedBox(height: 25),
-
-          // Section Historique
-          SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0, 0.2),
-              end: Offset.zero,
-            ).animate(_animation),
-            child: FadeTransition(
-              opacity: _animation,
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        "Historique des paiements",
+                      const Text(
+                        'Résumé des paiements',
                         style: TextStyle(
+                          color: Colors.white,
                           fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.grey[800],
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
+                          horizontal: 10,
+                          vertical: 5,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF6366F1).withOpacity(0.1),
+                          color: Colors.white.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
-                          "${paymentHistory.length} transactions",
+                          '${paymentHistory.length} échéances',
                           style: const TextStyle(
-                            fontSize: 14,
+                            color: Colors.white,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF6366F1),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildPaymentInfoItem(
+                        'Total à payer',
+                        '${_formatCurrency.format(_totalDue)} FCFA',
+                        Icons.account_balance,
+                      ),
+                      _buildPaymentInfoItem(
+                        'Déjà payé',
+                        '${_formatCurrency.format(_totalPaid)} FCFA',
+                        Icons.check_circle,
+                      ),
+                      _buildPaymentInfoItem(
+                        'Reste à payer',
+                        '${_formatCurrency.format(_remainingAmount)} FCFA',
+                        Icons.warning,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPaymentInfoItem(String title, String value, IconData icon) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.2),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: Colors.white, size: 24),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          title,
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.8),
+            fontSize: 12,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPaymentProgress() {
+    final progressValue = _totalDue == 0 ? 0.0 : _totalPaid / _totalDue;
+    final progressPercentage = (progressValue * 100).toInt();
+
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(0, (1 - _animation.value) * 50),
+          child: Opacity(
+            opacity: _animation.value,
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    spreadRadius: 5,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Progression des paiements',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Stack(
+                          alignment: Alignment.centerLeft,
+                          children: [
+                            Container(
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE2E8F0),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 1500),
+                              curve: Curves.easeInOut,
+                              height: 12,
+                              width: MediaQuery.of(context).size.width * 
+                                  progressValue * 0.7, // Ajuster la largeur en fonction de l'écran
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xFF6366F1), Color(0xFF4F46E5)],
+                                  begin: Alignment.centerLeft,
+                                  end: Alignment.centerRight,
+                                ),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 15),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF6366F1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '$progressPercentage%',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 15),
-                  _buildPaymentHistoryList(),
+                  if (_totalDue > 0)
+                    Text(
+                      'Vous avez payé $_totalPaid FCFA sur $_totalDue FCFA',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                 ],
               ),
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildGlassCard(String title, int amount, IconData icon) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: Colors.white, size: 28),
-              const SizedBox(width: 10),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
+  Widget _buildPaymentHistory() {
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(0, (1 - _animation.value) * 50),
+          child: Opacity(
+            opacity: _animation.value,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    spreadRadius: 5,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
               ),
-            ],
-          ),
-          const SizedBox(height: 15),
-          Text(
-            "${_formatCurrency.format(amount)} FCFA",
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Historique des paiements',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1E293B),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF6366F1).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '${paymentHistory.length} transactions',
+                          style: const TextStyle(
+                            color: Color(0xFF6366F1),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  _isLoadingPayments
+                      ? _buildLoadingPaymentHistory()
+                      : _buildPaymentHistoryList(),
+                ],
+              ),
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildPaymentChart() {
-    // Transformer les données d'historique pour le graphique
-    List<double> values = [];
-    for (var payment in paymentHistory) {
-      values.add(
-        double.parse(
-          payment["amount"].replaceAll(" FCFA", "").replaceAll(" ", ""),
-        ),
-      );
-    }
-
-    return PieChart(
-      PieChartData(
-        sectionsSpace: 2,
-        centerSpaceRadius: 40,
-        sections: List.generate(paymentHistory.length, (i) {
-          final payment = paymentHistory[i];
-          final value = double.parse(
-            payment["amount"].replaceAll(" FCFA", "").replaceAll(" ", ""),
-          );
-          final isPaid = payment["status"] == "Payé";
-
-          // Couleurs différentes selon le statut de paiement
-          final color =
-              isPaid ? const Color(0xFF6366F1) : const Color(0xFFF87171);
-
-          return PieChartSectionData(
-            color: color,
-            value: value,
-            title: '${value.toInt()} FCFA',
-            radius: 70,
-            titleStyle: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
+  Widget _buildLoadingPaymentHistory() {
+    return Center(
+      child: Column(
+        children: [
+          const CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'Chargement des paiements...',
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontWeight: FontWeight.w500,
             ),
-            badgeWidget: _Badge(
-              payment["date"],
-              isPaid ? const Color(0xFF6366F1) : const Color(0xFFF87171),
-              isPaid ? Icons.check_circle : Icons.pending,
-            ),
-            badgePositionPercentageOffset: 1.2,
-          );
-        }),
-        borderData: FlBorderData(show: false),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildPaymentHistoryList() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 10,
-            spreadRadius: 0,
-          ),
-        ],
-      ),
-      child: ListView.separated(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: paymentHistory.length,
-        separatorBuilder:
-            (context, index) =>
-                Divider(color: Colors.grey.withOpacity(0.2), height: 1),
-        itemBuilder: (context, index) {
-          final payment = paymentHistory[index];
-          final isPaid = payment["status"] == "Payé";
-
-          return ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 20,
-              vertical: 5,
+    if (_errorMessage.isNotEmpty) {
+      return Center(
+        child: Column(
+          children: [
+            const Icon(
+              Icons.error_outline,
+              color: Colors.red,
+              size: 48,
             ),
-            leading: Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                color:
-                    isPaid
-                        ? const Color(0xFF6366F1).withOpacity(0.1)
-                        : const Color(0xFFF87171).withOpacity(0.1),
-                shape: BoxShape.circle,
+            const SizedBox(height: 10),
+            Text(
+              'Erreur: $_errorMessage',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.red,
+                fontWeight: FontWeight.w500,
               ),
-              child: Center(
-                child: Icon(
-                  isPaid ? Icons.check_circle : Icons.pending,
-                  color:
-                      isPaid
-                          ? const Color(0xFF6366F1)
-                          : const Color(0xFFF87171),
-                  size: 24,
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: _fetchPaymentData,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6366F1),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
                 ),
               ),
+              child: const Text(
+                'Réessayer',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
-            title: Text(
-              payment["amount"],
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ],
+        ),
+      );
+    }
+
+    if (paymentHistory.isEmpty) {
+      return Center(
+        child: Column(
+          children: [
+            const Icon(
+              Icons.history,
+              color: Colors.grey,
+              size: 48,
             ),
-            subtitle: Text(
-              "Date: ${payment["date"]}",
-              style: TextStyle(color: Colors.grey[600], fontSize: 14),
+            const SizedBox(height: 10),
+            Text(
+              'Aucun paiement disponible',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w500,
+              ),
             ),
-            trailing:
-                isPaid
-                    ? const Chip(
-                      label: Text(
-                        "Payé",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: paymentHistory.length,
+      itemBuilder: (context, index) {
+        final payment = paymentHistory[index];
+        final statusColor = payment["status"] == "Payé"
+            ? Colors.green
+            : payment["status"] == "En attente"
+                ? Colors.orange
+                : const Color(0xFF6366F1);
+
+        return AnimatedBuilder(
+          animation: _animation,
+          builder: (context, child) {
+            // Calculer un délai d'animation basé sur l'index
+            final delayedAnimation = Tween<double>(begin: 0, end: 1).animate(
+              CurvedAnimation(
+                parent: _animationController,
+                curve: Interval(
+                  0.2 + (index * 0.1 > 0.5 ? 0.5 : index * 0.1),
+                  1.0,
+                  curve: Curves.easeOut,
+                ),
+              ),
+            );
+
+            return Transform.translate(
+              offset: Offset(
+                (1 - delayedAnimation.value) * 50,
+                0,
+              ),
+              child: Opacity(
+                opacity: delayedAnimation.value,
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 15),
+                  padding: const EdgeInsets.all(15),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(15),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.03),
+                        blurRadius: 5,
+                        spreadRadius: 1,
+                        offset: const Offset(0, 2),
                       ),
-                      backgroundColor: Color(0xFF6366F1),
-                      padding: EdgeInsets.symmetric(horizontal: 8),
-                    )
-                    : ElevatedButton(
-                      onPressed: () => _confirmPayment(payment, index),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF6366F1),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: const Text(
-                        "Payer",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                    ],
+                    border: Border.all(
+                      color: const Color(0xFFE2E8F0),
+                      width: 1,
                     ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-// Badge personnalisé pour le graphique
-class _Badge extends StatelessWidget {
-  final String date;
-  final Color color;
-  final IconData icon;
-
-  const _Badge(this.date, this.color, this.icon);
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(0.3),
-            blurRadius: 5,
-            spreadRadius: 1,
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color, size: 14),
-          const SizedBox(width: 4),
-          Text(
-            date,
-            style: TextStyle(
-              color: color,
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF6366F1).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Center(
+                          child: Icon(
+                            payment["status"] == "Payé"
+                                ? Icons.check_circle
+                                : Icons.pending_actions,
+                            color: const Color(0xFF6366F1),
+                            size: 24,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 15),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              payment["description"] ?? 'Paiement',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1E293B),
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              payment["date"] ?? 'Date inconnue',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            payment["amount"] ?? '0 FCFA',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E293B),
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: statusColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              payment["status"] ?? 'Inconnu',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: statusColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (payment["status"] == "En attente")
+                        IconButton(
+                          icon: const Icon(
+                            Icons.credit_card,
+                            color: Color(0xFF6366F1),
+                          ),
+                          onPressed: () => _confirmPayment(payment, index),
+                          tooltip: 'Payer maintenant',
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
