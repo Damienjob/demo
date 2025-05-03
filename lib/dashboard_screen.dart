@@ -1,9 +1,9 @@
-import 'package:assurzenmobile/login.dart';
+import 'login.dart';
 import 'package:flutter/material.dart';
-import 'main.dart';
+// import 'main.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({Key? key}) : super(key: key);
+  const DashboardScreen({super.key});
 
   @override
   _DashboardScreenState createState() => _DashboardScreenState();
@@ -76,7 +76,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Bienvenue sur votre ' + _titles[_selectedIndex].toLowerCase(),
+                      'Bienvenue sur votre ${_titles[_selectedIndex].toLowerCase()}',
                       style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,

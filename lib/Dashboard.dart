@@ -1,13 +1,78 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:fl_chart/fl_chart.dart';
+// import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
-import 'dart:math' as math;
+// import 'dart:math' as math;
 import 'package:shimmer/shimmer.dart';
-import 'package:http/http.dart' as http;
+// import 'package:http/http.dart' as http;
 import 'login.dart';
 import 'api_service.dart';
+import 'success_screen.dart';
 import 'payment_model.dart';
+
+import 'package:kkiapay_flutter_sdk/kkiapay_flutter_sdk.dart';
+
+void callback(response, context) {
+  switch (response['status']) {
+    case PAYMENT_CANCELLED:
+      debugPrint(PAYMENT_CANCELLED);
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(PAYMENT_CANCELLED),
+      ));
+      break;
+
+    case PENDING_PAYMENT:
+      debugPrint(PENDING_PAYMENT);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(PENDING_PAYMENT),
+      ));
+      break;
+
+    case PAYMENT_INIT:
+      debugPrint(PAYMENT_INIT);
+      //ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      //content: Text(PAYMENT_INIT),
+      //));
+      break;
+
+    case PAYMENT_SUCCESS:
+      debugPrint(PAYMENT_SUCCESS);
+      Navigator.pop(context);
+      // ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      //   content: Text(PAYMENT_SUCCESS),
+      // ));
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SuccessScreen(
+              // amount: response['requestData']['amount'],
+              // transactionId: response['transactionId'],
+              ),
+        ),
+      );
+      break;
+
+    default:
+      debugPrint(UNKNOWN_EVENT);
+      break;
+  }
+}
+
+const kkiapay = KKiaPay(
+    amount: 1000,
+    sandbox: true,
+    apikey: 'f4af5740652211efbf02478c5adba4b8',
+    callback: callback,
+    countries: ["BJ", "CI", "SN", "TG"],
+    phone: "22961000000",
+    name: "John Doe",
+    email: "email@mail.com",
+    reason: 'transaction reason',
+    data: 'Fake data',
+    theme: defaultTheme,
+    partnerId: 'AxXxXXxId',
+    paymentMethods: ["momo", "card"]);
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -19,7 +84,8 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage>
     with SingleTickerProviderStateMixin {
   List<Map<String, dynamic>> paymentHistory = [];
-  List<PaymentData> originalPayments = []; // Pour stocker les paiements originaux avec leurs ID
+  List<PaymentData> originalPayments =
+      []; // Pour stocker les paiements originaux avec leurs ID
   bool _isLoadingPayments = true;
   String _errorMessage = '';
 
@@ -74,12 +140,12 @@ class _HomePageState extends State<HomePage>
     try {
       // Appeler le service API pour récupérer les paiements
       final payments = await ApiService.getClientPayments();
-      
+
       if (mounted) {
         setState(() {
           // Sauvegarder les paiements originaux
           originalPayments = payments;
-          
+
           // Convertir les objets PaymentData en Map pour l'affichage
           paymentHistory = payments.map((payment) => payment.toMap()).toList();
           paymentHistory.sort((a, b) {
@@ -95,7 +161,7 @@ class _HomePageState extends State<HomePage>
               return 0; // En cas d'erreur, conserver l'ordre actuel
             }
           });
-          
+
           _isLoadingPayments = false;
 
           // Calculer les détails de paiement
@@ -297,18 +363,23 @@ class _HomePageState extends State<HomePage>
               ),
               onPressed: () {
                 setState(() {
+                  Navigator.of(context).pop();
                   // Mise à jour de l'affichage
                   paymentHistory[index]["status"] = "Payé";
                   _calculatePaymentDetails();
-                  
+
                   // Idéalement, ici on ferait une requête API pour mettre à jour le statut
                   // côté serveur, mais pour cette version, on se contente de mettre à jour l'UI
                 });
-                Navigator.of(context).pop();
-                _showSuccessNotification(
-                  context,
-                  "Paiement effectué avec succès !",
-                );
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => kkiapay),
+                  );
+                // Navigator.of(context).pop();
+                // _showSuccessNotification(
+                //   context,
+                //   "Paiement effectué avec succès !",
+                // );
               },
               child: const Text(
                 'Confirmer',
@@ -445,7 +516,7 @@ class _HomePageState extends State<HomePage>
               height: 400,
               width: double.infinity,
               decoration: BoxDecoration(
-color: Colors.white,
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(15),
               ),
             ),
@@ -651,11 +722,15 @@ color: Colors.white,
                               duration: const Duration(milliseconds: 1500),
                               curve: Curves.easeInOut,
                               height: 12,
-                              width: MediaQuery.of(context).size.width * 
-                                  progressValue * 0.7, // Ajuster la largeur en fonction de l'écran
+                              width: MediaQuery.of(context).size.width *
+                                  progressValue *
+                                  0.7, // Ajuster la largeur en fonction de l'écran
                               decoration: BoxDecoration(
                                 gradient: const LinearGradient(
-                                  colors: [Color(0xFF6366F1), Color(0xFF4F46E5)],
+                                  colors: [
+                                    Color(0xFF6366F1),
+                                    Color(0xFF4F46E5)
+                                  ],
                                   begin: Alignment.centerLeft,
                                   end: Alignment.centerRight,
                                 ),
