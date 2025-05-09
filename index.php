@@ -50,7 +50,7 @@
               <a class="nav-link" href="#home">Accueil</a>
             </li>
           </ul>
-          <?php if (isset($_SESSION['user_nom'])): ?>
+          <?php if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true):?>
           <a
             href="#features"
             class="btn btn-primary ms-lg-3"
@@ -62,12 +62,18 @@
           <button
             class="btn btn-primary ms-lg-3"
             data-bs-toggle="modal"
-            data-bs-target="#signupModal"
+            data-bs-target="#firstModal"
           >
             S'inscrire
           </button>
+          <a href="connexion.php"
+            class="btn btn-primary ms-lg-3"            
+          >
+            Se connecter
+          </a>
           <?php endif; ?>
         </div>
+       
       </div>
     </nav>
     <!-- //NAVBAR -->
@@ -111,11 +117,11 @@
                 choisie(Annuelle, Semestrielle, Trimestrielle ou Mensuelle).
               </p>
               <p>
-                Dans l'optique de parfaire ce projet, nous sommes en partenariat avec ................., une agence de ....................
+                Dans l'optique de parfaire ce projet, nous sommes en partenariat avec CIM SERVICES, une agence de AFG ASSURANCES
                 qui, une fois au terme des déposits se chargera de la mise en place ou du renouvellement desdites assurances.
               </p>
               <p>
-                ................... offrent une gamme variée de produits de la branche IARDT dont l'assurance automobile, objet de cette application.
+                AFG ASSURANCES offrent une gamme variée de produits de la branche IARDT dont l'assurance automobile, objet de cette application.
               </p>
               <!-- <div class="feature d-flex mt-5">
                 <div class="iconbox me-3">
@@ -163,7 +169,7 @@
     <!-- CARACTÉRISTIQUES  -->
     <section class="container" style="margin-top: -70px;">
       <h2 class="mb-5 fw-bold display-5 text-gradient">
-        Les garanties automobiles de .................... sont regroupées en deux packages:
+        Les garanties automobiles de AFG ASSURANCES sont regroupées en deux packages:
       </h2>
       <h5 class="text-center mb-5  display-5 text-black">
       <span class="symbole losange">&#9670;</span>Premier package
@@ -325,7 +331,7 @@
 <section class="container" style="margin-bottom: -7px; margin-top: -90px">
   <div class="container">
     <div class="text-center mb-5">
-      <h2 class="mb-5 fw-bold display-5 text-gradient">..................... vous offre également des avantages comme:</h2>
+      <h2 class="mb-5 fw-bold display-5 text-gradient">AFG ASSURANCES vous offre également des avantages comme:</h2>
       
     </div>
     
@@ -1026,6 +1032,7 @@
       </div>
     </div>
 
+
     <script src="js/bootstrap.bundle.min.js"></script>
    <script>
     document.addEventListener("DOMContentLoaded", function () {
@@ -1127,7 +1134,7 @@
   naissance.addEventListener("input", () => {
     const birthDate = new Date(naissance.value);
     const today = new Date();
-    const age = today.getFullYear() - birthDate.getFullYear();
+    let age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();
     
     // Ajuster l'âge si l'anniversaire n'est pas encore passé cette année
@@ -1168,8 +1175,8 @@
   });
 
   password.addEventListener("input", () => {
-    if (password.value.length < 5) {
-      showError(password, passwordError, "Le mot de passe doit contenir au moins 5 caractères.");
+    if (password.value.length < 8) {
+      showError(password, passwordError, "Le mot de passe doit contenir au moins 8 caractères.");
     } else {
       hideError(password, passwordError);
     }
@@ -1220,7 +1227,7 @@
       timerProgressBar: true
     }).then((result) => {
       // Redirection après fermeture de l'alerte
-      window.location.href = "confirmation.html"; // Page de confirmation
+      window.location.href = "connexion.php"; // Page de confirmation
     });
   }
   
@@ -1273,7 +1280,7 @@
     // Validation date de naissance
     const birthDate = new Date(naissance.value);
     const today = new Date();
-    const age = today.getFullYear() - birthDate.getFullYear();
+    let age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();
     
     // Ajuster l'âge si l'anniversaire n'est pas encore passé cette année
@@ -1306,8 +1313,8 @@
     }
 
     // Validation mot de passe
-    if (password.value.length < 5) {
-      showError(password, passwordError, "Le mot de passe doit contenir au moins 5 caractères.");
+    if (password.value.length < 8) {
+      showError(password, passwordError, "Le mot de passe doit contenir au moins 8 caractères.");
       isValid = false;
     }
 
@@ -1415,11 +1422,14 @@
         firstModal.hide();
 
         const secondModal = new bootstrap.Modal(
-          document.getElementById("signupModal2")
+          document.getElementById("signupModal")
         );
         secondModal.show();
       });
     </script>
+  
+</script>
+
     <!-- Ajoutez ces lignes dans la section <head> de votre HTML -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/limonte-sweetalert2/11.7.12/sweetalert2.all.min.js"></script>
   </body>

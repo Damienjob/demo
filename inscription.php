@@ -47,7 +47,7 @@ if (isset($_POST['submit'])) {
     $_SESSION['user_nom'] = $nom;
     $_SESSION['user_email'] = $email;
 
-    header('Location: index.php');
+    header('Location: connexion.php');
     exit();
 } else {
     header('Location: index.php');
