@@ -302,91 +302,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
     }
     
     // Gestion du formulaire de connexion
-    document.getElementById('loginForm').addEventListener('submit', function(e) {
+    document.getElementById('loginForm').addEventListener('submit', async function (e) {
       e.preventDefault();
-      
-      // Récupérer les valeurs des champs
-      const phone = document.getElementById('phone').value;
-      const password = document.getElementById('password').value;
-      
-      // Validation côté client
-      if (phone === '' || password === '') {
+
+      const phone = document.getElementById('phone').value.trim();
+      const password = document.getElementById('password').value.trim();
+
+      if (!phone || !password) {
         showErrorMessage('Veuillez remplir tous les champs.');
         return;
       }
-      
-      if (!/^[0-9]{10}$/.test(phone)) {
-        showErrorMessage('Format de numéro de téléphone invalide.');
+
+      if (!/^\d{10}$/.test(phone)) {
+        showErrorMessage('Format de numéro de téléphone invalide. Entrez exactement 10 chiffres.');
         return;
       }
-      
-      // Préparer les données pour l'API
-      const userData = {
-        phone: phone,
-        password: password
-      };
-      
-      // URL de l'API
+
+      const userData = { phone, password };
       const apiUrl = 'https://assurzendemo.itsmbenin.com/api/loginclient';
-      
-      // Afficher l'indicateur de chargement
-      showLoading();
-      
-      // Étape 1: Envoyer les données directement à l'API via Fetch
-      fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(userData)
-      })
-      .then(response => {
+
+      try {
+        showLoading();
+
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(userData)
+        });
+
         if (!response.ok) {
           throw new Error(`Erreur HTTP: ${response.status}`);
         }
-        return response.json();
-      })
-      .then(data => {
-        // Traitement en cas de succès
-        if (data.success === true) {
-          // Étape 2: Stocker les données dans la session PHP
-          return fetch(window.location.href, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-              'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: JSON.stringify({
-              action: 'saveSession',
-              userData: data.data
-            })
-          }).then(response => {
-            if (!response.ok) {
-              throw new Error(`Erreur de session: ${response.status}`);
-            }
-            return response.json();
-          }).then(sessionResponse => {
-            if (sessionResponse.success) {
-              // Afficher le message de succès
-              window.location.href = 'index.php';
 
-            } else {
-              throw new Error('Erreur lors de la création de la session');
-            }
-          });
+        const data = await response.json();
+
+        console.log(data.Client);
+
+        if (data.Client && data.token) {
+          // ✅ Stocker le token dans localStorage
+          localStorage.setItem('auth_token', data.token);
+
+          // (Facultatif) Stocker aussi les infos utilisateur si nécessaire
+          localStorage.setItem('user', JSON.stringify(data.user));
+
+          showSuccessMessage('Connexion réussie');
+          setTimeout(() => {
+            window.location.href = 'index.php';
+          }, 1500);
         } else {
-          // En cas d'échec avec réponse success: false
           showErrorMessage(data.message || 'Numéro de téléphone ou mot de passe incorrect.');
         }
-      })
-      .catch(error => {
-        // Gestion des erreurs
-        console.error('Erreur:', error);
-        showErrorMessage('Une erreur est survenue lors de la connexion. Veuillez réessayer.');
-      });
+
+      } catch (error) {
+        console.error('Erreur attrapée :', error);
+        showErrorMessage('Une erreur est survenue. Veuillez réessayer.');
+      }
     });
+
     
     // Création des particules pour l'arrière-plan dynamique
     const background = document.getElementById('background');
