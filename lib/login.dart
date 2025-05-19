@@ -63,11 +63,15 @@ class _LoginScreenState extends State<LoginScreen> {
         if (response.statusCode == 200 || response.statusCode == 201) {
           // Stockage du token et des informations utilisateur si nécessaire
           String token = response.data['token'];
+          String userId = response.data['Client']['id'].toString();
+          print("Réponse : ${response.data}");
           print("token : $token");
+          print("userId : $userId");
 
           // Stockage du token dans SharedPreferences
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('auth_token', token);
+          await prefs.setString('user_id', userId);
           // Ou ajoutez le token directement aux headers de Dio
           _dio.options.headers['Authorization'] = 'Bearer $token';
 
@@ -283,7 +287,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               padding: EdgeInsets.all(8.0),
                               child: TextFormField(
                                 controller: _passwordController,
-                                obscureText: !_obscurePassword,
+                                obscureText: _obscurePassword,
                                 decoration: InputDecoration(
                                   border: InputBorder.none,
                                   hintText: "Mot de passe",
@@ -291,8 +295,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                   suffixIcon: IconButton(
                                     icon: Icon(
                                       _obscurePassword
-                                          ? Icons.visibility
-                                          : Icons.visibility_off,
+                                          ? Icons.visibility_off
+                                          : Icons.visibility,
                                       color: Color.fromRGBO(143, 148, 251, 1),
                                     ),
                                     onPressed: () {
@@ -321,6 +325,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         onTap: () => _login(),
                         child: Container(
                           height: 50,
+                          width: double.infinity,  // Assure que le conteneur prend toute la largeur disponible
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(10),
                             gradient: LinearGradient(
@@ -331,39 +336,28 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                           child: Center(
-                            child:
-                                _isLoading
-                                    ? CircularProgressIndicator(
+                            child: _isLoading
+                                ? SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
                                       color: Colors.white,
-                                    )
-                                    : Text(
-                                      "Se connecter",
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                                      strokeWidth: 2,
                                     ),
+                                  )
+                                : Text(
+                                    "Se connecter",
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
                           ),
                         ),
                       ),
                     ),
                     SizedBox(height: 30),
-                    FadeInUp(
-                      duration: Duration(milliseconds: 2000),
-                      child: TextButton(
-                        onPressed: () {
-                          // Fonction pour le mot de passe oublié
-                          // Vous pouvez ajouter la navigation vers une page de récupération
-                        },
-                        child: Text(
-                          "Mot de passe oublié?",
-                          style: TextStyle(
-                            color: Color.fromRGBO(143, 148, 251, 1),
-                          ),
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: 20),
+                    
                   ],
                 ),
               ),

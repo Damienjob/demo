@@ -65,7 +65,8 @@ class ApiService {
       // setupInterceptors();
       
       // Récupérer l'ID du client depuis les préférences partagées
-      final clientId = '6'; // Utiliser '6' comme valeur par défaut
+      final prefs = await SharedPreferences.getInstance();
+      final clientId = prefs.getString('user_id') ?? '';
   
       if (clientId.isEmpty) {
         throw Exception('ID client non trouvé. Veuillez vous reconnecter.');
